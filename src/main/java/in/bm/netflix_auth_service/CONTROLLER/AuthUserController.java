@@ -6,6 +6,7 @@ import in.bm.netflix_auth_service.ResponseDTO.UserLoginResponseDTO;
 import in.bm.netflix_auth_service.SERVICE.AuthUserService;
 import in.bm.netflix_auth_service.RequestDTO.UserRegisterRequestDTO;
 import in.bm.netflix_auth_service.ResponseDTO.UserRegisterResponseDTO;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -20,22 +21,23 @@ public class AuthUserController {
 
     // todo : register api -> post/signup
 
-    @PostMapping(value = "/register",produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping(value = "/register", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
     public UserRegisterResponseDTO signUp(@RequestBody
-                                              UserRegisterRequestDTO userRegisterRequestDTO)
-    {
+                                          UserRegisterRequestDTO userRegisterRequestDTO) {
+
         return authUserService.signUp(userRegisterRequestDTO);
     }
 
     // todo: login api -> post/signin (email+password or mobile+password)
 
-    @PostMapping(value = "/login/password",produces = MediaType.APPLICATION_JSON_VALUE)
+    @PostMapping(value = "/login/password", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseStatus(HttpStatus.OK)
     public UserLoginResponseDTO signIn(@RequestBody
-                                           UserLoginRequestDTO userPasswordLoginDTO){
+                                       UserLoginRequestDTO userPasswordLoginDTO,
+                                       HttpServletResponse response) {
 
-        return authUserService.signIn(userPasswordLoginDTO);
+        return authUserService.signIn(userPasswordLoginDTO, response);
     }
 
     // todo: add device tracking for user login trustification

@@ -10,7 +10,9 @@ import in.bm.netflix_auth_service.RequestDTO.UserLoginRequestDTO;
 import in.bm.netflix_auth_service.RequestDTO.UserRegisterRequestDTO;
 import in.bm.netflix_auth_service.ResponseDTO.UserLoginResponseDTO;
 import in.bm.netflix_auth_service.ResponseDTO.UserRegisterResponseDTO;
+import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
+import jakarta.servlet.http.Cookie;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -64,7 +66,7 @@ public class AuthUserService {
                 .build();
     }
 
-    public UserLoginResponseDTO signIn(UserLoginRequestDTO userPasswordLoginDTO) {
+    public UserLoginResponseDTO signIn(UserLoginRequestDTO userPasswordLoginDTO, HttpServletResponse response) {
 
         if ((userPasswordLoginDTO.getMobileNumber() == null || userPasswordLoginDTO.getMobileNumber().isBlank()) &&
                 (userPasswordLoginDTO.getEmail() == null || userPasswordLoginDTO.getEmail().isBlank())) {
@@ -89,6 +91,9 @@ public class AuthUserService {
         }
 
         String accessToken = jwtService.generateAccessToken(user.getUserId().toString(), user.getRole().toString());
+        String refreshToken = jwtService.generateRefreshToken(user.getUserId().toString(),user.getRole().toString());
+
+        addRefreshTokenCookie(response,refreshToken);
 
         return UserLoginResponseDTO
                 .builder()
@@ -97,6 +102,15 @@ public class AuthUserService {
                 .accessToken(accessToken)
                 .tokenType(TOKEN_TYPE)
                 .build();
+    }
+
+    private static void addRefreshTokenCookie(HttpServletResponse response, String refreshToken){
+        Cookie cookie = new Cookie("refresh-token",refreshToken);
+        cookie.setHttpOnly(true);
+        cookie.setSecure(true);
+        cookie.setPath("/");
+        cookie.setMaxAge(30 * 24 * 60 * 60);
+        response.addCookie(cookie);
     }
 
 }
