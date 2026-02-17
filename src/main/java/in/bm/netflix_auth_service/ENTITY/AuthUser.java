@@ -7,6 +7,7 @@
     import lombok.Setter;
     import org.hibernate.annotations.Check;
 
+    import java.util.List;
     import java.util.UUID;
 
     @Getter
@@ -38,6 +39,9 @@
         private boolean emailVerified;
 
         private boolean mobileVerified;
+
+        @OneToMany(mappedBy = "user",cascade = CascadeType.ALL,orphanRemoval = true)
+        private List<UserDevice> userDevices;
 
 
 

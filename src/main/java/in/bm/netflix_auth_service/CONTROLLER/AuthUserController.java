@@ -19,7 +19,7 @@ public class AuthUserController {
 
     private final AuthUserService authUserService;
 
-    // todo : register api -> post/signup
+    //  register api -> post/signup
 
     @PostMapping(value = "/register", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
@@ -29,18 +29,45 @@ public class AuthUserController {
         return authUserService.signUp(userRegisterRequestDTO);
     }
 
-    // todo: login api -> post/signin (email+password or mobile+password)
+    //  login api -> post/signin (email+password or mobile+password)
 
     @PostMapping(value = "/login/password", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseStatus(HttpStatus.OK)
     public UserLoginResponseDTO signIn(@RequestBody
                                        UserLoginRequestDTO userPasswordLoginDTO,
-                                       HttpServletResponse response) {
+                                       HttpServletResponse response,
+                                       @RequestHeader(value = "Ip-Address", required = false, defaultValue = "") String ipAddress) {
 
-        return authUserService.signIn(userPasswordLoginDTO, response);
+        return authUserService.signIn(userPasswordLoginDTO, response, ipAddress);
     }
 
-    // todo: add device tracking for user login trustification
+    // add device tracking for user login trustification
+
+    // todo: add refresh api including refresh token rotation token reuse detection
+
+    // POST /refresh-token
+    //
+    //1. Get refresh token from HttpOnly cookie
+    //2. Get deviceId from cookie
+    //3. Find device session
+    //4. Check:
+    //   - isRevoked = false
+    //   - expiresAt > now
+    //   - hash matches
+    //5. If valid →
+    //      generate new access token
+    //      generate new refresh token
+    //      replace hash in DB
+    //      send new refresh token cookie
+    //6. If hash mismatch but session exists →
+    //      reuse detected →
+    //      revoke all sessions
+    //      return 401
+
+    // todo send verification email and sms for email and mobile verification with separate endpoints for verification and resend verification
+
+
+
 
 
 }

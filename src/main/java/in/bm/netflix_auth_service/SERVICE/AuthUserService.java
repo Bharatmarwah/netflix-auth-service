@@ -2,10 +2,12 @@ package in.bm.netflix_auth_service.SERVICE;
 
 import in.bm.netflix_auth_service.ENTITY.AuthUser;
 import in.bm.netflix_auth_service.ENTITY.Role;
+import in.bm.netflix_auth_service.ENTITY.UserDevice;
 import in.bm.netflix_auth_service.EXCEPTION.InvalidCredentialsException;
 import in.bm.netflix_auth_service.EXCEPTION.UserAlreadyExistException;
 import in.bm.netflix_auth_service.EXCEPTION.UserNotFound;
 import in.bm.netflix_auth_service.REPOSITORY.AuthUserRepository;
+import in.bm.netflix_auth_service.REPOSITORY.UserDeviceRepository;
 import in.bm.netflix_auth_service.RequestDTO.UserLoginRequestDTO;
 import in.bm.netflix_auth_service.RequestDTO.UserRegisterRequestDTO;
 import in.bm.netflix_auth_service.ResponseDTO.UserLoginResponseDTO;
@@ -17,6 +19,8 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
+
 
 @Service
 @RequiredArgsConstructor
@@ -25,6 +29,7 @@ public class AuthUserService {
     private final AuthUserRepository authUserRepository;
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtService jwtService;
+    private final UserDeviceRepository userDeviceRepository;
 
     public static final String TOKEN_TYPE = "Bearer";
 
@@ -56,6 +61,7 @@ public class AuthUserService {
         u.setEmailVerified(false);
         u.setMobileVerified(false);
 
+
         AuthUser savedUser = authUserRepository.save(u);
 
         return UserRegisterResponseDTO
@@ -65,8 +71,8 @@ public class AuthUserService {
                 .mobileVerificationRequired(savedUser.getMobileNumber() != null)
                 .build();
     }
-
-    public UserLoginResponseDTO signIn(UserLoginRequestDTO userPasswordLoginDTO, HttpServletResponse response) {
+    @Transactional
+    public UserLoginResponseDTO signIn(UserLoginRequestDTO userPasswordLoginDTO, HttpServletResponse response,String ipAddress) {
 
         if ((userPasswordLoginDTO.getMobileNumber() == null || userPasswordLoginDTO.getMobileNumber().isBlank()) &&
                 (userPasswordLoginDTO.getEmail() == null || userPasswordLoginDTO.getEmail().isBlank())) {
@@ -93,6 +99,18 @@ public class AuthUserService {
         String accessToken = jwtService.generateAccessToken(user.getUserId().toString(), user.getRole().toString());
         String refreshToken = jwtService.generateRefreshToken(user.getUserId().toString(),user.getRole().toString());
 
+        UserDevice device = new UserDevice();
+        device.setDeviceId(deviceIdGenerator());
+        device.setRefreshTokenHash(jwtService.getRefreshTokenHash(refreshToken));
+        device.setIpAddress(ipAddress);
+        device.setRevoked(false);
+        device.setExpiresAt(LocalDateTime.now().plusMonths(1));
+        device.setUser(user);
+
+        userDeviceRepository.save(device);
+
+        addDeviceIdCookie(response,device.getDeviceId());
+
         addRefreshTokenCookie(response,refreshToken);
 
         return UserLoginResponseDTO
@@ -112,5 +130,20 @@ public class AuthUserService {
         cookie.setMaxAge(30 * 24 * 60 * 60);
         response.addCookie(cookie);
     }
+
+    private static void addDeviceIdCookie(HttpServletResponse response , String deviceId){
+        Cookie cookie = new Cookie("device-id",deviceId);
+        cookie.setHttpOnly(false);
+        cookie.setSecure(true);
+        cookie.setPath("/");
+        cookie.setMaxAge(30 * 24 * 60 * 60);
+        response.addCookie(cookie);
+    }
+
+    private static String deviceIdGenerator(){
+        return java.util.UUID.randomUUID().toString();
+    }
+
+
 
 }
