@@ -12,5 +12,4 @@ public class UserRegisterResponseDTO {
 
     private boolean mobileVerificationRequired;
 
-
 }
