@@ -11,7 +11,9 @@ import in.bm.netflix_auth_service.REPOSITORY.UserDeviceRepository;
 import in.bm.netflix_auth_service.RequestDTO.UserLoginRequestDTO;
 import in.bm.netflix_auth_service.RequestDTO.UserRegisterRequestDTO;
 import in.bm.netflix_auth_service.ResponseDTO.UserLoginResponseDTO;
+import in.bm.netflix_auth_service.ResponseDTO.UserRefreshTokenResponse;
 import in.bm.netflix_auth_service.ResponseDTO.UserRegisterResponseDTO;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import jakarta.servlet.http.Cookie;
@@ -71,8 +73,9 @@ public class AuthUserService {
                 .mobileVerificationRequired(savedUser.getMobileNumber() != null)
                 .build();
     }
+
     @Transactional
-    public UserLoginResponseDTO signIn(UserLoginRequestDTO userPasswordLoginDTO, HttpServletResponse response,String ipAddress) {
+    public UserLoginResponseDTO signIn(UserLoginRequestDTO userPasswordLoginDTO, HttpServletResponse response, String ipAddress) {
 
         if ((userPasswordLoginDTO.getMobileNumber() == null || userPasswordLoginDTO.getMobileNumber().isBlank()) &&
                 (userPasswordLoginDTO.getEmail() == null || userPasswordLoginDTO.getEmail().isBlank())) {
@@ -97,7 +100,7 @@ public class AuthUserService {
         }
 
         String accessToken = jwtService.generateAccessToken(user.getUserId().toString(), user.getRole().toString());
-        String refreshToken = jwtService.generateRefreshToken(user.getUserId().toString(),user.getRole().toString());
+        String refreshToken = jwtService.generateRefreshToken(user.getUserId().toString(), user.getRole().toString());
 
         UserDevice device = new UserDevice();
         device.setDeviceId(deviceIdGenerator());
@@ -109,9 +112,9 @@ public class AuthUserService {
 
         userDeviceRepository.save(device);
 
-        addDeviceIdCookie(response,device.getDeviceId());
+        addDeviceIdCookie(response, device.getDeviceId());
 
-        addRefreshTokenCookie(response,refreshToken);
+        addRefreshTokenCookie(response, refreshToken);
 
         return UserLoginResponseDTO
                 .builder()
@@ -122,8 +125,75 @@ public class AuthUserService {
                 .build();
     }
 
-    private static void addRefreshTokenCookie(HttpServletResponse response, String refreshToken){
-        Cookie cookie = new Cookie("refresh-token",refreshToken);
+    @Transactional
+    public UserRefreshTokenResponse refreshToken(HttpServletResponse response, HttpServletRequest request) {
+        String refreshToken = null;
+        String deviceId = null;
+
+        Cookie[] cookies = request.getCookies();
+        if (cookies == null)
+            throw new InvalidCredentialsException("No cookies found");
+
+        for (Cookie c : cookies) {
+            if ("refresh-token".equals(c.getName())) {
+                refreshToken = c.getValue();
+            }
+            if ("device-id".equals(c.getName())) {
+                deviceId = c.getValue();
+            }
+        }
+
+        if (refreshToken == null)
+            throw new InvalidCredentialsException("Refresh token not found in cookies");
+
+        if (deviceId == null)
+            throw new InvalidCredentialsException("Device ID not found in cookies");
+
+        String oldHash = jwtService.getRefreshTokenHash(refreshToken);
+
+        UserDevice device = userDeviceRepository.findByDeviceId(deviceId);
+
+        if (device == null)
+            throw new UserNotFound("Device not found");
+
+        boolean isValid =
+                !device.isRevoked() &&
+                        device.getExpiresAt().isAfter(LocalDateTime.now()) &&
+                        oldHash.equals(device.getRefreshTokenHash());
+
+        if (!isValid) {
+            if (!oldHash.equals(device.getRefreshTokenHash())) {
+                userDeviceRepository.revokeAllUserDevices(device.getUser().getUserId());
+                throw new InvalidCredentialsException("Potential token reuse detected. All sessions revoked.");
+            }
+
+            throw new InvalidCredentialsException("Refresh token expired or revoked");
+        }
+
+        String newAccessToken = jwtService.generateAccessToken(
+                device.getUser().getUserId().toString(),
+                device.getUser().getRole().toString()
+        );
+
+        String newRefreshToken = jwtService.generateRefreshToken(
+                device.getUser().getUserId().toString(),
+                device.getUser().getRole().toString()
+        );
+
+        String newHash = jwtService.getRefreshTokenHash(newRefreshToken);
+
+
+        device.setRefreshTokenHash(newHash);
+        device.setExpiresAt(LocalDateTime.now().plusMonths(1));
+        userDeviceRepository.save(device);
+
+        addRefreshTokenCookie(response, newRefreshToken);
+
+        return UserRefreshTokenResponse.builder().accessToken(newAccessToken).build();
+    }
+
+    private static void addRefreshTokenCookie(HttpServletResponse response, String refreshToken) {
+        Cookie cookie = new Cookie("refresh-token", refreshToken);
         cookie.setHttpOnly(true);
         cookie.setSecure(true);
         cookie.setPath("/");
@@ -131,8 +201,8 @@ public class AuthUserService {
         response.addCookie(cookie);
     }
 
-    private static void addDeviceIdCookie(HttpServletResponse response , String deviceId){
-        Cookie cookie = new Cookie("device-id",deviceId);
+    private static void addDeviceIdCookie(HttpServletResponse response, String deviceId) {
+        Cookie cookie = new Cookie("device-id", deviceId);
         cookie.setHttpOnly(false);
         cookie.setSecure(true);
         cookie.setPath("/");
@@ -140,10 +210,57 @@ public class AuthUserService {
         response.addCookie(cookie);
     }
 
-    private static String deviceIdGenerator(){
+    private static String deviceIdGenerator() {
         return java.util.UUID.randomUUID().toString();
     }
 
+    private static void expireRefreshTokenCookie(HttpServletResponse response, String refreshToken) {
+        Cookie cookie = new Cookie("refresh-token", refreshToken);
+        cookie.setSecure(true);
+        cookie.setHttpOnly(true);
+        cookie.setMaxAge(0);
+        cookie.setPath("/");
 
+        response.addCookie(cookie);
+    }
+
+    private static void expireDeviceIdCookie(HttpServletResponse response, String deviceId) {
+        Cookie cookie = new Cookie("device-id", deviceId);
+        cookie.setSecure(true);
+        cookie.setHttpOnly(false);
+        cookie.setMaxAge(0);
+        cookie.setPath("/");
+
+        response.addCookie(cookie);
+    }
+
+    @Transactional
+    public void logout(HttpServletRequest request, HttpServletResponse response) {
+
+        Cookie[] cookies = request.getCookies();
+
+        String deviceId = null;
+
+        if (cookies!= null) {
+            for (Cookie c : cookies) {
+                if ("device-id".equals(c.getName())) {
+                    deviceId = c.getValue();
+                }
+            }
+        }
+
+        if (deviceId != null) {
+            UserDevice device = userDeviceRepository.findByDeviceId(deviceId);
+
+            if (device != null) {
+                device.setRevoked(true);
+                userDeviceRepository.save(device);
+            }
+        }
+
+        expireRefreshTokenCookie(response, deviceId);
+        expireDeviceIdCookie(response, deviceId);
+    }
 
 }
+

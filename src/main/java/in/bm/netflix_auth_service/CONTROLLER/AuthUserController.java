@@ -1,11 +1,12 @@
 package in.bm.netflix_auth_service.CONTROLLER;
 
-
 import in.bm.netflix_auth_service.RequestDTO.UserLoginRequestDTO;
 import in.bm.netflix_auth_service.ResponseDTO.UserLoginResponseDTO;
+import in.bm.netflix_auth_service.ResponseDTO.UserRefreshTokenResponse;
 import in.bm.netflix_auth_service.SERVICE.AuthUserService;
 import in.bm.netflix_auth_service.RequestDTO.UserRegisterRequestDTO;
 import in.bm.netflix_auth_service.ResponseDTO.UserRegisterResponseDTO;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -43,26 +44,20 @@ public class AuthUserController {
 
     // add device tracking for user login trustification
 
-    // todo: add refresh api including refresh token rotation token reuse detection
+    //  add refresh api including refresh token rotation token reuse detection
+    @PostMapping("/refresh-token")
+    @ResponseStatus(HttpStatus.OK)
+    public UserRefreshTokenResponse refreshToken(HttpServletResponse response, HttpServletRequest request){
+        return authUserService.refreshToken(response, request);
+    }
 
-    // POST /refresh-token
-    //
-    //1. Get refresh token from HttpOnly cookie
-    //2. Get deviceId from cookie
-    //3. Find device session
-    //4. Check:
-    //   - isRevoked = false
-    //   - expiresAt > now
-    //   - hash matches
-    //5. If valid →
-    //      generate new access token
-    //      generate new refresh token
-    //      replace hash in DB
-    //      send new refresh token cookie
-    //6. If hash mismatch but session exists →
-    //      reuse detected →
-    //      revoke all sessions
-    //      return 401
+    // add logout api to invalidate refresh token and clear cookies
+    @PostMapping("/logout")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void logout(HttpServletRequest request ,HttpServletResponse response){
+        authUserService.logout(request, response);
+    }
+
 
     // todo send verification email and sms for email and mobile verification with separate endpoints for verification and resend verification
 
