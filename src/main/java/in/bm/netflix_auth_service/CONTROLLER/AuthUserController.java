@@ -36,10 +36,11 @@ public class AuthUserController {
     @ResponseStatus(HttpStatus.OK)
     public UserLoginResponseDTO signIn(@RequestBody
                                        UserLoginRequestDTO userPasswordLoginDTO,
+                                       HttpServletRequest request,
                                        HttpServletResponse response,
                                        @RequestHeader(value = "Ip-Address", required = false, defaultValue = "") String ipAddress) {
 
-        return authUserService.signIn(userPasswordLoginDTO, response, ipAddress);
+        return authUserService.signIn(userPasswordLoginDTO,request,response,ipAddress);
     }
 
     // add device tracking for user login trustification
@@ -57,12 +58,75 @@ public class AuthUserController {
     public void logout(HttpServletRequest request ,HttpServletResponse response){
         authUserService.logout(request, response);
     }
+    
+    // ================= AUTH TODOs =================
+
+// TODO: Implement email verification flow
+// POST /auth/user/send-verification
+// → Generate verification token
+// → Save token + expiry
+// → Send email with verification link
+
+// TODO: Implement email verification confirmation
+// POST /auth/user/verify-email
+// → Accept token
+// → Validate token + expiry
+// → Mark emailVerified = true
+
+// TODO: Implement resend verification endpoint
+// POST /auth/user/resend-verification
+// → Regenerate token if not verified
+// → Send email again
+// → Return generic response (prevent enumeration)
 
 
-    // todo send verification email and sms for email and mobile verification with separate endpoints for verification and resend verification
+// ================= PASSWORD MANAGEMENT =================
+
+// TODO: Implement forgot password request
+// POST /auth/user/forgot-password
+// → Generate password reset token
+// → Save token + expiry
+// → Send reset email
+
+// TODO: Implement reset password endpoint
+// POST /auth/user/reset-password
+// → Validate reset token
+// → Update password (encoded)
+// → Invalidate all sessions
 
 
+// ================= SESSION MANAGEMENT =================
+
+// TODO: Implement logout from all devices
+// POST /auth/user/logout-all
+// → Extract userId from access token
+// → Revoke all user devices
+
+// TODO: Implement change password endpoint
+// POST /auth/user/change-password
+// → Require valid access token
+// → Validate old password
+// → Update password
+// → Revoke all sessions
 
 
+// ================= OPTIONAL UX APIs =================
+
+// TODO: Implement email availability check (optional)
+// GET /auth/user/check-email
+// → Return available: true/false
+// → Avoid user enumeration leak
+
+// TODO: Implement phone number verification via OTP (if required)
+// POST /auth/user/send-otp
+// POST /auth/user/verify-otp
+
+
+// ================= SECURITY ENHANCEMENTS =================
+
+// TODO: Add rate limiting for login and verification endpoints
+// TODO: Add brute-force protection for login attempts
+// TODO: Add device metadata tracking (IP, user-agent)
+// TODO: Add audit logging for security events
 
 }

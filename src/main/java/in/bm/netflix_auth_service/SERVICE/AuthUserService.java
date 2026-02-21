@@ -75,7 +75,7 @@ public class AuthUserService {
     }
 
     @Transactional
-    public UserLoginResponseDTO signIn(UserLoginRequestDTO userPasswordLoginDTO, HttpServletResponse response, String ipAddress) {
+    public UserLoginResponseDTO signIn(UserLoginRequestDTO userPasswordLoginDTO,HttpServletRequest request, HttpServletResponse response, String ipAddress) {
 
         if ((userPasswordLoginDTO.getMobileNumber() == null || userPasswordLoginDTO.getMobileNumber().isBlank()) &&
                 (userPasswordLoginDTO.getEmail() == null || userPasswordLoginDTO.getEmail().isBlank())) {
@@ -109,6 +109,7 @@ public class AuthUserService {
         device.setRevoked(false);
         device.setExpiresAt(LocalDateTime.now().plusMonths(1));
         device.setUser(user);
+        device.setUserAgent(request.getHeader("User-Agent"));
 
         userDeviceRepository.save(device);
 
@@ -192,6 +193,35 @@ public class AuthUserService {
         return UserRefreshTokenResponse.builder().accessToken(newAccessToken).build();
     }
 
+    @Transactional
+    public void logout(HttpServletRequest request, HttpServletResponse response) {
+
+        Cookie[] cookies = request.getCookies();
+
+        String deviceId = null;
+
+        if (cookies!= null) {
+            for (Cookie c : cookies) {
+                if ("device-id".equals(c.getName())) {
+                    deviceId = c.getValue();
+                }
+            }
+        }
+
+        if (deviceId != null) {
+            UserDevice device = userDeviceRepository.findByDeviceId(deviceId);
+
+            if (device != null) {
+                device.setRevoked(true);
+                userDeviceRepository.save(device);
+            }
+        }
+
+        expireRefreshTokenCookie(response, deviceId);
+        expireDeviceIdCookie(response, deviceId);
+    }
+
+// HELPERS
     private static void addRefreshTokenCookie(HttpServletResponse response, String refreshToken) {
         Cookie cookie = new Cookie("refresh-token", refreshToken);
         cookie.setHttpOnly(true);
@@ -234,33 +264,6 @@ public class AuthUserService {
         response.addCookie(cookie);
     }
 
-    @Transactional
-    public void logout(HttpServletRequest request, HttpServletResponse response) {
-
-        Cookie[] cookies = request.getCookies();
-
-        String deviceId = null;
-
-        if (cookies!= null) {
-            for (Cookie c : cookies) {
-                if ("device-id".equals(c.getName())) {
-                    deviceId = c.getValue();
-                }
-            }
-        }
-
-        if (deviceId != null) {
-            UserDevice device = userDeviceRepository.findByDeviceId(deviceId);
-
-            if (device != null) {
-                device.setRevoked(true);
-                userDeviceRepository.save(device);
-            }
-        }
-
-        expireRefreshTokenCookie(response, deviceId);
-        expireDeviceIdCookie(response, deviceId);
-    }
 
 }
 
