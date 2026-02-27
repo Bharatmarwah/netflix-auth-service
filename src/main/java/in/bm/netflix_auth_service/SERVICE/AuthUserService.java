@@ -99,6 +99,20 @@ public class AuthUserService {
             throw new InvalidCredentialsException("Invalid Password");
         }
 
+        boolean emailVerification = user.isEmailVerified();
+        boolean mobileVerification = user.isMobileVerified();
+
+        if (!emailVerification || !mobileVerification){
+            return UserLoginResponseDTO
+                    .builder()
+                    .status("Verification Required")
+                    .userId(user.getUserId().toString())
+                    .role(user.getRole().toString())
+                    .emailVerificationRequired(user.getEmail() != null && !user.isEmailVerified())
+                    .mobileVerificationRequired(user.getMobileNumber() != null && !user.isMobileVerified())
+                    .build();
+        }
+
         String accessToken = jwtService.generateAccessToken(user.getUserId().toString(), user.getRole().toString());
         String refreshToken = jwtService.generateRefreshToken(user.getUserId().toString(), user.getRole().toString());
 
@@ -119,6 +133,7 @@ public class AuthUserService {
 
         return UserLoginResponseDTO
                 .builder()
+                .status("Login Successful")
                 .userId(user.getUserId().toString())
                 .role(user.getRole().toString())
                 .accessToken(accessToken)

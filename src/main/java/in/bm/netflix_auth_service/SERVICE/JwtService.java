@@ -7,7 +7,6 @@ import org.springframework.stereotype.Service;
 
 import java.security.KeyFactory;
 import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
 import java.security.PrivateKey;
 import java.security.spec.PKCS8EncodedKeySpec;
 import java.util.Base64;
@@ -54,7 +53,7 @@ public class JwtService {
     private PrivateKey getPrivateKey() {
         try {
             byte[] keyBytes = Base64.getDecoder().decode(privateKey);
-            PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(keyBytes);
+            PKCS8EncodedKeySpec spec = new PKCS8EncodedKeySpec(keyBytes);//convert a private key (in PKCS#8 format)
             KeyFactory keyFactory = KeyFactory.getInstance("RSA");
             return keyFactory.generatePrivate(spec);
         } catch (Exception e) {
@@ -71,7 +70,6 @@ public class JwtService {
         } catch (Exception e) {
             throw new RuntimeException("Failed to hash refresh token", e);
         }
-
 
     }
 }
