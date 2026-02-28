@@ -43,6 +43,9 @@
         @OneToMany(mappedBy = "user",cascade = CascadeType.ALL,orphanRemoval = true)
         private List<UserDevice> userDevices;
 
+        @OneToMany(mappedBy = "user", cascade = CascadeType.ALL, orphanRemoval = true)
+        private List<VerificationToken> verificationTokens;
+
 
 
     }

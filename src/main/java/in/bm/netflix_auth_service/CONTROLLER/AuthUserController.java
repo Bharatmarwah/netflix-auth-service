@@ -43,6 +43,25 @@ public class AuthUserController {
         return authUserService.signIn(userPasswordLoginDTO,request,response,ipAddress);
     }
 
+
+    //  email verification api -> post/verify-email (token in body or query param)
+
+    @PostMapping(value = "/send-email-otp", produces = MediaType.APPLICATION_JSON_VALUE)
+    @ResponseStatus(HttpStatus.OK)
+    public void sendEmailVerificationOTP(@RequestBody String email){
+        authUserService.sendEmailVerificationOTP(email);
+    }
+
+
+
+
+
+
+
+
+
+
+
     // add device tracking for user login trustification
 
     //  add refresh api including refresh token rotation token reuse detection

@@ -72,4 +72,16 @@ public class JwtService {
         }
 
     }
+
+    public String getVerificationTokenHash(String token) {
+
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hash = digest.digest(token.getBytes());
+            return Base64.getEncoder().encodeToString(hash);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to hash refresh token", e);
+        }
+
+    }
 }

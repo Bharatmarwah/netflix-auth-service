@@ -1,13 +1,12 @@
 package in.bm.netflix_auth_service.SERVICE;
 
-import in.bm.netflix_auth_service.ENTITY.AuthUser;
-import in.bm.netflix_auth_service.ENTITY.Role;
-import in.bm.netflix_auth_service.ENTITY.UserDevice;
+import in.bm.netflix_auth_service.ENTITY.*;
 import in.bm.netflix_auth_service.EXCEPTION.InvalidCredentialsException;
 import in.bm.netflix_auth_service.EXCEPTION.UserAlreadyExistException;
 import in.bm.netflix_auth_service.EXCEPTION.UserNotFound;
 import in.bm.netflix_auth_service.REPOSITORY.AuthUserRepository;
 import in.bm.netflix_auth_service.REPOSITORY.UserDeviceRepository;
+import in.bm.netflix_auth_service.REPOSITORY.VerificationTokenRepository;
 import in.bm.netflix_auth_service.RequestDTO.UserLoginRequestDTO;
 import in.bm.netflix_auth_service.RequestDTO.UserRegisterRequestDTO;
 import in.bm.netflix_auth_service.ResponseDTO.UserLoginResponseDTO;
@@ -21,7 +20,10 @@ import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+
 import java.time.LocalDateTime;
+import java.util.Optional;
+import java.util.UUID;
 
 
 @Service
@@ -32,6 +34,8 @@ public class AuthUserService {
     private final BCryptPasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final UserDeviceRepository userDeviceRepository;
+    private final VerificationTokenRepository verificationTokenRepository;
+    private final EmailService emailService;
 
     public static final String TOKEN_TYPE = "Bearer";
 
@@ -234,6 +238,45 @@ public class AuthUserService {
 
         expireRefreshTokenCookie(response, deviceId);
         expireDeviceIdCookie(response, deviceId);
+    }
+
+    @Transactional
+    public void sendEmailVerificationLink(String email) {
+
+        Optional<AuthUser> optionalUser = authUserRepository.findByEmail(email);
+
+        if (optionalUser.isEmpty()) {
+            return;
+        }
+
+        AuthUser user = optionalUser.get();
+
+
+        if (user.isEmailVerified()) {
+            return;
+        }
+
+        verificationTokenRepository.deleteByUserAndType(
+                user, VerificationType.EMAIL_VERIFICATION
+        );
+
+        String rawToken = UUID.randomUUID().toString() + UUID.randomUUID();
+
+        String hashedToken = jwtService.getVerificationTokenHash(rawToken);
+
+        VerificationToken verificationToken = new VerificationToken();
+        verificationToken.setTokenHash(hashedToken);
+        verificationToken.setUser(user);
+        verificationToken.setExpiresAt(LocalDateTime.now().plusMinutes(10));
+        verificationToken.setUsed(false);
+        verificationToken.setType(VerificationType.EMAIL_VERIFICATION);
+
+        verificationTokenRepository.save(verificationToken);
+
+        String verificationLink =
+                "https://netflix/verify?token=" + rawToken;
+
+        emailService.sendVerificationEmail(user.getEmail(), verificationLink);
     }
 
 // HELPERS
