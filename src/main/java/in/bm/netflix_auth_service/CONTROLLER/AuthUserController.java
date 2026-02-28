@@ -1,5 +1,6 @@
 package in.bm.netflix_auth_service.CONTROLLER;
 
+import in.bm.netflix_auth_service.RequestDTO.EmailVerificationRequestDTO;
 import in.bm.netflix_auth_service.RequestDTO.UserLoginRequestDTO;
 import in.bm.netflix_auth_service.ResponseDTO.UserLoginResponseDTO;
 import in.bm.netflix_auth_service.ResponseDTO.UserRefreshTokenResponse;
@@ -46,23 +47,23 @@ public class AuthUserController {
 
     //  email verification api -> post/verify-email (token in body or query param)
 
-    @PostMapping(value = "/send-email-otp", produces = MediaType.APPLICATION_JSON_VALUE)
-    @ResponseStatus(HttpStatus.OK)
-    public void sendEmailVerificationOTP(@RequestBody String email){
-        authUserService.sendEmailVerificationOTP(email);
+    @PostMapping("/send-email-link")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void sendEmailVerificationOTP(@RequestBody EmailVerificationRequestDTO requestDTO){
+        authUserService.sendEmailVerificationLink(requestDTO.getEmail());
     }
 
+    @PostMapping("/verify-email")
+    @ResponseStatus(HttpStatus.OK)
+    public void verifyEmail(@RequestParam("token") String token){
+        authUserService.verifyEmail(token);
+    }
 
-
-
-
-
-
-
-
-
-
-    // add device tracking for user login trustification
+    @PostMapping("/resend-email-link")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resendEmailVerificationLink(@RequestBody EmailVerificationRequestDTO requestDTO){
+        authUserService.sendEmailVerificationLink(requestDTO.getEmail());
+    }
 
     //  add refresh api including refresh token rotation token reuse detection
     @PostMapping("/refresh-token")
@@ -77,6 +78,7 @@ public class AuthUserController {
     public void logout(HttpServletRequest request ,HttpServletResponse response){
         authUserService.logout(request, response);
     }
+
     
     // ================= AUTH TODOs =================
 

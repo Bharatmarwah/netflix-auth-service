@@ -38,6 +38,10 @@ public class AuthUserService {
     private final EmailService emailService;
 
     public static final String TOKEN_TYPE = "Bearer";
+    private static final int COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60; // 30 days
+    private static final int MAX_FAILED_ATTEMPTS = 5;
+    private static final int LOCKOUT_DURATION_MINUTES = 15;
+    private static final int MAX_DEVICES_PER_USER = 5;
 
     @Transactional
     public UserRegisterResponseDTO signUp(UserRegisterRequestDTO userRegisterRequestDTO) {
@@ -59,16 +63,19 @@ public class AuthUserService {
             throw new UserAlreadyExistException("Mobile already registered");
         }
 
-        AuthUser u = new AuthUser();
-        u.setEmail(userRegisterRequestDTO.getEmail());
-        u.setMobileNumber(userRegisterRequestDTO.getMobileNumber());
-        u.setPasswordHash(passwordEncoder.encode(userRegisterRequestDTO.getPassword()));
-        u.setRole(Role.USER);
-        u.setEmailVerified(false);
-        u.setMobileVerified(false);
+        if (userRegisterRequestDTO.getPassword()==null || userRegisterRequestDTO.getPassword().isBlank()) {
+            throw new InvalidCredentialsException("Password is required");
+        }
 
+        AuthUser newUser = new AuthUser();
+        newUser.setEmail(userRegisterRequestDTO.getEmail());
+        newUser.setMobileNumber(userRegisterRequestDTO.getMobileNumber());
+        newUser.setPasswordHash(passwordEncoder.encode(userRegisterRequestDTO.getPassword()));
+        newUser.setRole(Role.USER);
+        newUser.setEmailVerified(false);
+        newUser.setMobileVerified(false);
 
-        AuthUser savedUser = authUserRepository.save(u);
+        AuthUser savedUser = authUserRepository.save(newUser);
 
         return UserRegisterResponseDTO
                 .builder()
@@ -79,7 +86,7 @@ public class AuthUserService {
     }
 
     @Transactional
-    public UserLoginResponseDTO signIn(UserLoginRequestDTO userPasswordLoginDTO,HttpServletRequest request, HttpServletResponse response, String ipAddress) {
+    public UserLoginResponseDTO signIn(UserLoginRequestDTO userPasswordLoginDTO, HttpServletRequest request, HttpServletResponse response, String ipAddress) {
 
         if ((userPasswordLoginDTO.getMobileNumber() == null || userPasswordLoginDTO.getMobileNumber().isBlank()) &&
                 (userPasswordLoginDTO.getEmail() == null || userPasswordLoginDTO.getEmail().isBlank())) {
@@ -97,16 +104,34 @@ public class AuthUserService {
                     .orElseThrow(() -> new UserNotFound("User not found"));
         }
 
+        // Check if account is locked
+        if (isAccountLocked(user)) {
+            throw new InvalidCredentialsException("Account is locked. Try again later.");
+        }
+
         boolean passwordMatches = passwordEncoder.matches(userPasswordLoginDTO.getPassword(), user.getPasswordHash());
+
+        if (!passwordMatches) {
+            handleFailedLogin(user);
+            throw new InvalidCredentialsException("Invalid Password");
+        }
+
+        // Reset failed attempts on successful login
+        resetFailedAttempts(user);
+
+        // Track login metadata
+        user.setLastLoginAt(LocalDateTime.now());
+        user.setLastLoginIp(ipAddress);
+        authUserRepository.save(user);
 
         if (!passwordMatches) {
             throw new InvalidCredentialsException("Invalid Password");
         }
 
-        boolean emailVerification = user.isEmailVerified();
-        boolean mobileVerification = user.isMobileVerified();
+        boolean emailVerification = user.getEmail() != null && !user.isEmailVerified();
+        boolean mobileVerification = user.getMobileNumber() != null && !user.isMobileVerified();
 
-        if (!emailVerification || !mobileVerification){
+        if (emailVerification || mobileVerification) {
             return UserLoginResponseDTO
                     .builder()
                     .status("Verification Required")
@@ -147,21 +172,8 @@ public class AuthUserService {
 
     @Transactional
     public UserRefreshTokenResponse refreshToken(HttpServletResponse response, HttpServletRequest request) {
-        String refreshToken = null;
-        String deviceId = null;
-
-        Cookie[] cookies = request.getCookies();
-        if (cookies == null)
-            throw new InvalidCredentialsException("No cookies found");
-
-        for (Cookie c : cookies) {
-            if ("refresh-token".equals(c.getName())) {
-                refreshToken = c.getValue();
-            }
-            if ("device-id".equals(c.getName())) {
-                deviceId = c.getValue();
-            }
-        }
+        String refreshToken = getCookieValue(request, "refresh-token");
+        String deviceId = getCookieValue(request, "device-id");
 
         if (refreshToken == null)
             throw new InvalidCredentialsException("Refresh token not found in cookies");
@@ -209,23 +221,15 @@ public class AuthUserService {
 
         addRefreshTokenCookie(response, newRefreshToken);
 
-        return UserRefreshTokenResponse.builder().accessToken(newAccessToken).build();
+        return UserRefreshTokenResponse
+                .builder()
+                .accessToken(newAccessToken)
+                .build();
     }
 
     @Transactional
     public void logout(HttpServletRequest request, HttpServletResponse response) {
-
-        Cookie[] cookies = request.getCookies();
-
-        String deviceId = null;
-
-        if (cookies!= null) {
-            for (Cookie c : cookies) {
-                if ("device-id".equals(c.getName())) {
-                    deviceId = c.getValue();
-                }
-            }
-        }
+        String deviceId = getCookieValue(request, "device-id");
 
         if (deviceId != null) {
             UserDevice device = userDeviceRepository.findByDeviceId(deviceId);
@@ -248,19 +252,15 @@ public class AuthUserService {
         if (optionalUser.isEmpty()) {
             return;
         }
-
         AuthUser user = optionalUser.get();
-
-
         if (user.isEmailVerified()) {
             return;
         }
-
         verificationTokenRepository.deleteByUserAndType(
                 user, VerificationType.EMAIL_VERIFICATION
         );
 
-        String rawToken = UUID.randomUUID().toString() + UUID.randomUUID();
+        String rawToken = UUID.randomUUID().toString();
 
         String hashedToken = jwtService.getVerificationTokenHash(rawToken);
 
@@ -279,13 +279,43 @@ public class AuthUserService {
         emailService.sendVerificationEmail(user.getEmail(), verificationLink);
     }
 
-// HELPERS
+    @Transactional
+    public void verifyEmail(String token) {
+        String tokenHash = jwtService.getVerificationTokenHash(token);
+
+        VerificationToken verificationToken = verificationTokenRepository
+                .findByTokenHashAndType(tokenHash, VerificationType.EMAIL_VERIFICATION)
+                .orElseThrow(() -> new InvalidCredentialsException("Invalid or expired token"));
+
+        if (verificationToken.isUsed() || verificationToken.getExpiresAt().isBefore(LocalDateTime.now())) {
+            throw new InvalidCredentialsException("Invalid or expired token");
+        }
+        AuthUser user = verificationToken.getUser();
+        user.setEmailVerified(true);
+        authUserRepository.save(user);
+
+        verificationToken.setUsed(true);
+        verificationTokenRepository.save(verificationToken);
+    }
+
+    // HELPERS
+
+    private String getCookieValue(HttpServletRequest request, String cookieName) {
+        if (request.getCookies() == null) return null;
+        for (Cookie cookie : request.getCookies()) {
+            if (cookieName.equals(cookie.getName())) {
+                return cookie.getValue();
+            }
+        }
+        return null;
+    }
+
     private static void addRefreshTokenCookie(HttpServletResponse response, String refreshToken) {
         Cookie cookie = new Cookie("refresh-token", refreshToken);
         cookie.setHttpOnly(true);
         cookie.setSecure(true);
         cookie.setPath("/");
-        cookie.setMaxAge(30 * 24 * 60 * 60);
+        cookie.setMaxAge(COOKIE_MAX_AGE_SECONDS);
         response.addCookie(cookie);
     }
 
@@ -294,7 +324,7 @@ public class AuthUserService {
         cookie.setHttpOnly(false);
         cookie.setSecure(true);
         cookie.setPath("/");
-        cookie.setMaxAge(30 * 24 * 60 * 60);
+        cookie.setMaxAge(COOKIE_MAX_AGE_SECONDS);
         response.addCookie(cookie);
     }
 
@@ -322,6 +352,34 @@ public class AuthUserService {
         response.addCookie(cookie);
     }
 
+    // SECURITY: Brute force protection helpers
+    private boolean isAccountLocked(AuthUser user) {
+        if (user.getLockedUntil() == null) return false;
+        if (LocalDateTime.now().isAfter(user.getLockedUntil())) {
+            // Lock expired, reset
+            user.setLockedUntil(null);
+            user.setFailedLoginAttempts(0);
+            return false;
+        }
+        return true;
+    }
+
+    private void handleFailedLogin(AuthUser user) {
+        int attempts = user.getFailedLoginAttempts() + 1;
+        user.setFailedLoginAttempts(attempts);
+
+        if (attempts >= MAX_FAILED_ATTEMPTS) {
+            user.setLockedUntil(LocalDateTime.now().plusMinutes(LOCKOUT_DURATION_MINUTES));
+        }
+        authUserRepository.save(user);
+    }
+
+    private void resetFailedAttempts(AuthUser user) {
+        if (user.getFailedLoginAttempts() > 0) {
+            user.setFailedLoginAttempts(0);
+            user.setLockedUntil(null);
+        }
+    }
 
 }
 

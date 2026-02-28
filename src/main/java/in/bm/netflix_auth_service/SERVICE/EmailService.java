@@ -1,6 +1,7 @@
 package in.bm.netflix_auth_service.SERVICE;
 
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.scheduling.annotation.Async;
@@ -8,12 +9,14 @@ import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class EmailService {
 
     private final JavaMailSender javaMailSender;
 
     @Async
     public void sendVerificationEmail(String email, String verificationLink) {
+        log.info("Sending verification email to {}", email);
         SimpleMailMessage message  = new SimpleMailMessage();
         message.setTo(email);
         message.setSubject("Verify Your Account");
@@ -30,8 +33,10 @@ public class EmailService {
                         "The Team"
         );
 
-        message.setFrom("randommail123test@gmail.com");
+        message.setFrom("bharatmarwah4@gamil.com");
         javaMailSender.send(message);
+
+        log.info("Verification email sent to {}", email);
     }
 
 
