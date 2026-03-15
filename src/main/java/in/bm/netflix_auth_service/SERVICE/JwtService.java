@@ -46,7 +46,7 @@ public class JwtService {
                 .subject(userId)
                 .issuedAt(new Date(System.currentTimeMillis()))
                 .expiration(new Date(System.currentTimeMillis() + Refresh_Token_Validity))
-                .signWith(getPrivateKey())
+                .signWith(getPrivateKey(), Jwts.SIG.RS256)
                 .compact();
     }
 
