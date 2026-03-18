@@ -16,6 +16,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import jakarta.servlet.http.Cookie;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -28,6 +29,7 @@ import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AuthUserService {
 
     private final AuthUserRepository authUserRepository;
@@ -39,9 +41,6 @@ public class AuthUserService {
 
     public static final String TOKEN_TYPE = "Bearer";
     private static final int COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60; // 30 days
-    private static final int MAX_FAILED_ATTEMPTS = 5;
-    private static final int LOCKOUT_DURATION_MINUTES = 15;
-    private static final int MAX_DEVICES_PER_USER = 5;
 
     @Transactional
     public UserRegisterResponseDTO signUp(UserRegisterRequestDTO userRegisterRequestDTO) {
@@ -104,25 +103,7 @@ public class AuthUserService {
                     .orElseThrow(() -> new UserNotFound("User not found"));
         }
 
-        // Check if account is locked
-        if (isAccountLocked(user)) {
-            throw new InvalidCredentialsException("Account is locked. Try again later.");
-        }
-
         boolean passwordMatches = passwordEncoder.matches(userPasswordLoginDTO.getPassword(), user.getPasswordHash());
-
-        if (!passwordMatches) {
-            handleFailedLogin(user);
-            throw new InvalidCredentialsException("Invalid Password");
-        }
-
-        // Reset failed attempts on successful login
-        resetFailedAttempts(user);
-
-        // Track login metadata
-        user.setLastLoginAt(LocalDateTime.now());
-        user.setLastLoginIp(ipAddress);
-        authUserRepository.save(user);
 
         if (!passwordMatches) {
             throw new InvalidCredentialsException("Invalid Password");
@@ -250,10 +231,12 @@ public class AuthUserService {
         Optional<AuthUser> optionalUser = authUserRepository.findByEmail(email);
 
         if (optionalUser.isEmpty()) {
+            log.info("Email {} not found. Skipping verification email.", email);
             return;
         }
         AuthUser user = optionalUser.get();
         if (user.isEmailVerified()) {
+            log.info("Email {} already verified. Skipping verification email.", email);
             return;
         }
         verificationTokenRepository.deleteByUserAndType(
@@ -267,6 +250,7 @@ public class AuthUserService {
         VerificationToken verificationToken = new VerificationToken();
         verificationToken.setTokenHash(hashedToken);
         verificationToken.setUser(user);
+        verificationToken.setCreatedAt(LocalDateTime.now());
         verificationToken.setExpiresAt(LocalDateTime.now().plusMinutes(10));
         verificationToken.setUsed(false);
         verificationToken.setType(VerificationType.EMAIL_VERIFICATION);
@@ -276,6 +260,7 @@ public class AuthUserService {
         String verificationLink =
                 "https://netflix/verify?token=" + rawToken;
 
+        log.info("Sending verification email to {} with link: {}", email, verificationLink);
         emailService.sendVerificationEmail(user.getEmail(), verificationLink);
     }
 
@@ -284,7 +269,7 @@ public class AuthUserService {
         String tokenHash = jwtService.getVerificationTokenHash(token);
 
         VerificationToken verificationToken = verificationTokenRepository
-                .findByTokenHashAndType(tokenHash, VerificationType.EMAIL_VERIFICATION)
+                .findByTokenHash(tokenHash)
                 .orElseThrow(() -> new InvalidCredentialsException("Invalid or expired token"));
 
         if (verificationToken.isUsed() || verificationToken.getExpiresAt().isBefore(LocalDateTime.now())) {
@@ -350,35 +335,6 @@ public class AuthUserService {
         cookie.setPath("/");
 
         response.addCookie(cookie);
-    }
-
-    // SECURITY: Brute force protection helpers
-    private boolean isAccountLocked(AuthUser user) {
-        if (user.getLockedUntil() == null) return false;
-        if (LocalDateTime.now().isAfter(user.getLockedUntil())) {
-            // Lock expired, reset
-            user.setLockedUntil(null);
-            user.setFailedLoginAttempts(0);
-            return false;
-        }
-        return true;
-    }
-
-    private void handleFailedLogin(AuthUser user) {
-        int attempts = user.getFailedLoginAttempts() + 1;
-        user.setFailedLoginAttempts(attempts);
-
-        if (attempts >= MAX_FAILED_ATTEMPTS) {
-            user.setLockedUntil(LocalDateTime.now().plusMinutes(LOCKOUT_DURATION_MINUTES));
-        }
-        authUserRepository.save(user);
-    }
-
-    private void resetFailedAttempts(AuthUser user) {
-        if (user.getFailedLoginAttempts() > 0) {
-            user.setFailedLoginAttempts(0);
-            user.setLockedUntil(null);
-        }
     }
 
 }

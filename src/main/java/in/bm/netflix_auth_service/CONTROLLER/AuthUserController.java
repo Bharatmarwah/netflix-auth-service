@@ -9,6 +9,7 @@ import in.bm.netflix_auth_service.RequestDTO.UserRegisterRequestDTO;
 import in.bm.netflix_auth_service.ResponseDTO.UserRegisterResponseDTO;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -25,7 +26,7 @@ public class AuthUserController {
 
     @PostMapping(value = "/register", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseStatus(HttpStatus.CREATED)
-    public UserRegisterResponseDTO signUp(@RequestBody
+    public UserRegisterResponseDTO signUp(@Valid @RequestBody
                                           UserRegisterRequestDTO userRegisterRequestDTO) {
 
         return authUserService.signUp(userRegisterRequestDTO);
@@ -35,7 +36,7 @@ public class AuthUserController {
 
     @PostMapping(value = "/login/password", produces = MediaType.APPLICATION_JSON_VALUE)
     @ResponseStatus(HttpStatus.OK)
-    public UserLoginResponseDTO signIn(@RequestBody
+    public UserLoginResponseDTO signIn(@Valid @RequestBody
                                        UserLoginRequestDTO userPasswordLoginDTO,
                                        HttpServletRequest request,
                                        HttpServletResponse response,
@@ -44,12 +45,10 @@ public class AuthUserController {
         return authUserService.signIn(userPasswordLoginDTO,request,response,ipAddress);
     }
 
-
     //  email verification api -> post/verify-email (token in body or query param)
-
     @PostMapping("/send-email-link")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void sendEmailVerificationOTP(@RequestBody EmailVerificationRequestDTO requestDTO){
+    public void sendEmailVerificationOTP(@Valid @RequestBody EmailVerificationRequestDTO requestDTO){
         authUserService.sendEmailVerificationLink(requestDTO.getEmail());
     }
 
@@ -61,7 +60,7 @@ public class AuthUserController {
 
     @PostMapping("/resend-email-link")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void resendEmailVerificationLink(@RequestBody EmailVerificationRequestDTO requestDTO){
+    public void resendEmailVerificationLink(@Valid @RequestBody EmailVerificationRequestDTO requestDTO){
         authUserService.sendEmailVerificationLink(requestDTO.getEmail());
     }
 
@@ -78,27 +77,6 @@ public class AuthUserController {
     public void logout(HttpServletRequest request ,HttpServletResponse response){
         authUserService.logout(request, response);
     }
-
-    
-    // ================= AUTH TODOs =================
-
-// TODO: Implement email verification flow
-// POST /auth/user/send-verification
-// → Generate verification token
-// → Save token + expiry
-// → Send email with verification link
-
-// TODO: Implement email verification confirmation
-// POST /auth/user/verify-email
-// → Accept token
-// → Validate token + expiry
-// → Mark emailVerified = true
-
-// TODO: Implement resend verification endpoint
-// POST /auth/user/resend-verification
-// → Regenerate token if not verified
-// → Send email again
-// → Return generic response (prevent enumeration)
 
 
 // ================= PASSWORD MANAGEMENT =================
