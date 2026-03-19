@@ -72,7 +72,7 @@ public class JwtService {
 
     }
 
-    public String getVerificationTokenHash(String token) {
+    public String getTokenHash(String token) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             byte[] hash = digest.digest(token.getBytes());
@@ -82,4 +82,5 @@ public class JwtService {
         }
 
     }
+
 }

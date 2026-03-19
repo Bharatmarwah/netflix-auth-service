@@ -10,6 +10,7 @@ import in.bm.netflix_auth_service.ResponseDTO.UserRegisterResponseDTO;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.MediaType;
@@ -46,18 +47,20 @@ public class AuthUserController {
     }
 
     //  email verification api -> post/verify-email (token in body or query param)
+    // todo add mobile opt verification also
     @PostMapping("/send-email-link")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void sendEmailVerificationOTP(@Valid @RequestBody EmailVerificationRequestDTO requestDTO){
         authUserService.sendEmailVerificationLink(requestDTO.getEmail());
     }
-
+// todo add mobile opt verification also
     @PostMapping("/verify-email")
     @ResponseStatus(HttpStatus.OK)
     public void verifyEmail(@RequestParam("token") String token){
         authUserService.verifyEmail(token);
     }
 
+    // todo verify both email and mobile number in case of mobile opt verification
     @PostMapping("/resend-email-link")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void resendEmailVerificationLink(@Valid @RequestBody EmailVerificationRequestDTO requestDTO){
@@ -80,6 +83,14 @@ public class AuthUserController {
 
 
 // ================= PASSWORD MANAGEMENT =================
+// todo avoid multiple opt sending requests
+    @PostMapping("/forget-password")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void PasswordReset(@NotBlank @RequestBody String identifier){
+        authUserService.sendPasswordResetVerification(identifier);
+    }
+
+
 
 // TODO: Implement forgot password request
 // POST /auth/user/forgot-password

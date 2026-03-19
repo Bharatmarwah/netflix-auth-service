@@ -15,5 +15,5 @@ public class EmailVerificationRequestDTO {
 
     @NotBlank
     @Email
-    String email;
+    private String email;
 }

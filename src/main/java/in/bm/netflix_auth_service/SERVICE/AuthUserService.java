@@ -6,6 +6,7 @@ import in.bm.netflix_auth_service.EXCEPTION.UserAlreadyExistException;
 import in.bm.netflix_auth_service.EXCEPTION.UserNotFound;
 import in.bm.netflix_auth_service.REPOSITORY.AuthUserRepository;
 import in.bm.netflix_auth_service.REPOSITORY.UserDeviceRepository;
+import in.bm.netflix_auth_service.REPOSITORY.VerificationOtpRepository;
 import in.bm.netflix_auth_service.REPOSITORY.VerificationTokenRepository;
 import in.bm.netflix_auth_service.RequestDTO.UserLoginRequestDTO;
 import in.bm.netflix_auth_service.RequestDTO.UserRegisterRequestDTO;
@@ -14,13 +15,14 @@ import in.bm.netflix_auth_service.ResponseDTO.UserRefreshTokenResponse;
 import in.bm.netflix_auth_service.ResponseDTO.UserRegisterResponseDTO;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import jakarta.servlet.http.Cookie;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
-
+import org.apache.commons.validator.routines.EmailValidator;
 
 import java.time.LocalDateTime;
 import java.util.Optional;
@@ -38,9 +40,13 @@ public class AuthUserService {
     private final UserDeviceRepository userDeviceRepository;
     private final VerificationTokenRepository verificationTokenRepository;
     private final EmailService emailService;
+    private final VerificationOtpRepository verificationOtpRepository;
+    private final OtpService otpService;
 
-    public static final String TOKEN_TYPE = "Bearer";
-    private static final int COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60; // 30 days
+    private static final EmailValidator emailValidator = EmailValidator.getInstance();
+
+    private final static String TOKEN_TYPE = "Bearer";
+    private final static int COOKIE_MAX_AGE_SECONDS = 30 * 24 * 60 * 60; // 30 days
 
     @Transactional
     public UserRegisterResponseDTO signUp(UserRegisterRequestDTO userRegisterRequestDTO) {
@@ -62,7 +68,7 @@ public class AuthUserService {
             throw new UserAlreadyExistException("Mobile already registered");
         }
 
-        if (userRegisterRequestDTO.getPassword()==null || userRegisterRequestDTO.getPassword().isBlank()) {
+        if (userRegisterRequestDTO.getPassword() == null || userRegisterRequestDTO.getPassword().isBlank()) {
             throw new InvalidCredentialsException("Password is required");
         }
 
@@ -169,6 +175,7 @@ public class AuthUserService {
         if (device == null)
             throw new UserNotFound("Device not found");
 
+        //checking if the device is revoked or not and if the device is expired or not and if the old hash doest matches means malicious hacker try to use old refresh toke ( this is called refresh token rotation reuse detection)
         boolean isValid =
                 !device.isRevoked() &&
                         device.getExpiresAt().isAfter(LocalDateTime.now()) &&
@@ -245,7 +252,7 @@ public class AuthUserService {
 
         String rawToken = UUID.randomUUID().toString();
 
-        String hashedToken = jwtService.getVerificationTokenHash(rawToken);
+        String hashedToken = jwtService.getTokenHash(rawToken);
 
         VerificationToken verificationToken = new VerificationToken();
         verificationToken.setTokenHash(hashedToken);
@@ -266,7 +273,7 @@ public class AuthUserService {
 
     @Transactional
     public void verifyEmail(String token) {
-        String tokenHash = jwtService.getVerificationTokenHash(token);
+        String tokenHash = jwtService.getTokenHash(token);
 
         VerificationToken verificationToken = verificationTokenRepository
                 .findByTokenHash(tokenHash)
@@ -284,6 +291,14 @@ public class AuthUserService {
     }
 
     // HELPERS
+
+    public static boolean isEmail(String identifier) {
+        return identifier != null && emailValidator.isValid(identifier);
+    }
+
+    public static boolean isMobile(String identifier) {
+        return identifier != null && identifier.matches("^[6-9]\\d{9}$");
+    }
 
     private String getCookieValue(HttpServletRequest request, String cookieName) {
         if (request.getCookies() == null) return null;
@@ -337,5 +352,52 @@ public class AuthUserService {
         response.addCookie(cookie);
     }
 
+    @Transactional
+    public void sendPasswordResetVerification(@NotBlank String identifier) {
+        AuthUser user;
+        if (isEmail(identifier)) {
+            user = authUserRepository.findByEmail(identifier)
+                    .orElseThrow(() -> new UserNotFound("User not found"));
+
+            verificationTokenRepository.deleteByUserAndType(user, VerificationType.PASSWORD_RESET);
+
+            String rawToken = UUID.randomUUID().toString();
+            String hashToken = jwtService.getTokenHash(rawToken);
+
+            VerificationToken verificationToken = new VerificationToken();
+            verificationToken.setTokenHash(hashToken);
+            verificationToken.setCreatedAt(LocalDateTime.now());
+            verificationToken.setExpiresAt(LocalDateTime.now().plusMinutes(10));
+            verificationToken.setUsed(false);
+            verificationToken.setType(VerificationType.PASSWORD_RESET);
+            verificationToken.setUser(user);
+
+            verificationTokenRepository.save(verificationToken);
+
+            String verificationLink = "https://netflix/reset-password?token=" + rawToken;
+
+            emailService.sendPasswordResetVerificationEmail(user.getEmail(), verificationLink);
+
+        } else if (isMobile(identifier)) {
+            user = authUserRepository.findByMobileNumber(identifier)
+                    .orElseThrow(() -> new UserNotFound("User not found"));
+            verificationOtpRepository.deleteByUserAndType(user, VerificationType.PASSWORD_RESET);
+
+            VerificationOtp otp = new VerificationOtp();
+            otp.setUser(user);
+            otp.setMobileNumber(identifier);
+            otp.setCreatedAt(LocalDateTime.now());
+            otp.setExpiredAt(LocalDateTime.now().plusMinutes(10));
+            otp.setUsed(false);
+            otp.setType(VerificationType.PASSWORD_RESET);
+            otp.setOtpHash(null);// for development purpose
+
+            verificationOtpRepository.save(otp);
+
+            otpService.sendOnceTimePassword(identifier);
+        } else {
+            throw new InvalidCredentialsException("Invalid email or mobile number");
+        }
+    }
 }
 
