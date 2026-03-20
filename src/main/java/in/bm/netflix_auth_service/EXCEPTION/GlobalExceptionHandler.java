@@ -35,5 +35,13 @@ public class GlobalExceptionHandler {
                 "timestamp", LocalDateTime.now());
     }
 
+    @ExceptionHandler(InvalidOtpException.class)
+    @ResponseStatus(HttpStatus.UNAUTHORIZED)
+    public Map<String,Object> handleInvalidOtpExceptions(InvalidOtpException ex){
+        return Map.of("message",ex.getMessage(),
+                "status",HttpStatus.UNAUTHORIZED.value(),
+                "timestamp", LocalDateTime.now());
+    }
+
 
 }

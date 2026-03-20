@@ -1,6 +1,6 @@
 package in.bm.netflix_auth_service.CONTROLLER;
 
-import in.bm.netflix_auth_service.RequestDTO.EmailVerificationRequestDTO;
+import in.bm.netflix_auth_service.RequestDTO.OtpRequestDTO;
 import in.bm.netflix_auth_service.RequestDTO.UserLoginRequestDTO;
 import in.bm.netflix_auth_service.ResponseDTO.UserLoginResponseDTO;
 import in.bm.netflix_auth_service.ResponseDTO.UserRefreshTokenResponse;
@@ -46,25 +46,29 @@ public class AuthUserController {
         return authUserService.signIn(userPasswordLoginDTO,request,response,ipAddress);
     }
 
-    //  email verification api -> post/verify-email (token in body or query param)
-    // todo add mobile opt verification also
-    @PostMapping("/send-email-link")
+    @PostMapping("/send-verification")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void sendEmailVerificationOTP(@Valid @RequestBody EmailVerificationRequestDTO requestDTO){
-        authUserService.sendEmailVerificationLink(requestDTO.getEmail());
+    public void sendVerification(@NotBlank @RequestBody String identifier){
+        authUserService.sendVerification(identifier);
     }
-// todo add mobile opt verification also
+
+
+    @PostMapping("/resend-verification")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resendVerification(@NotBlank @RequestBody String identifier){
+        authUserService.sendVerification(identifier);
+    }
+
     @PostMapping("/verify-email")
-    @ResponseStatus(HttpStatus.OK)
+    @ResponseStatus(HttpStatus.NO_CONTENT)
     public void verifyEmail(@RequestParam("token") String token){
         authUserService.verifyEmail(token);
     }
 
-    // todo verify both email and mobile number in case of mobile opt verification
-    @PostMapping("/resend-email-link")
+    @PostMapping("/verify-otp")
     @ResponseStatus(HttpStatus.NO_CONTENT)
-    public void resendEmailVerificationLink(@Valid @RequestBody EmailVerificationRequestDTO requestDTO){
-        authUserService.sendEmailVerificationLink(requestDTO.getEmail());
+    public void verifyOtp(@Valid @RequestBody OtpRequestDTO requestDTO){
+        authUserService.verifyOtp(requestDTO);
     }
 
     //  add refresh api including refresh token rotation token reuse detection
@@ -80,7 +84,6 @@ public class AuthUserController {
     public void logout(HttpServletRequest request ,HttpServletResponse response){
         authUserService.logout(request, response);
     }
-
 
 // ================= PASSWORD MANAGEMENT =================
 // todo avoid multiple opt sending requests

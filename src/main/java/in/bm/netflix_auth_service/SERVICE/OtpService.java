@@ -2,8 +2,11 @@ package in.bm.netflix_auth_service.SERVICE;
 
 import com.twilio.Twilio;
 import com.twilio.rest.verify.v2.service.Verification;
+import com.twilio.rest.verify.v2.service.VerificationCheck;
 import com.twilio.type.PhoneNumber;
+import in.bm.netflix_auth_service.EXCEPTION.InvalidOtpException;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Pattern;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -21,7 +24,7 @@ public class OtpService {
             Twilio.init(Twilio_Account_Sid,Twilio_Auth_Token);
             Verification verification = Verification.creator(
                     Twilio_Service_Sid,
-                    "91"+identifier,
+                    "+91"+identifier,
                     "sms"
             ).create();
         }catch (Exception e){
@@ -30,4 +33,22 @@ public class OtpService {
         }
 
     }
+
+    public void verifyOtp(@Pattern(regexp = "^[0-9]{10}$",message = "Invalid mobile number") String mobileNumber, @NotBlank String code) {
+      try{
+        VerificationCheck verificationCheck = com.twilio.rest.verify.v2.service
+                .VerificationCheck.creator(Twilio_Service_Sid)
+                .setTo("+91" + mobileNumber)
+                .setCode(code)
+                .create();
+
+        if (!"approved".equals(verificationCheck.getStatus())) {
+            throw new InvalidOtpException("Invalid or expire OTP");
+        }
+    }
+      catch (Exception e){
+          log.error("Error verifying code of {}: {}", mobileNumber, e.getMessage());
+          throw new RuntimeException("Failed to send OTP. Please try again later.");
+      }
+      }
 }

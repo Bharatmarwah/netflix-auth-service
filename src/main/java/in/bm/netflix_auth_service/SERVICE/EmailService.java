@@ -1,6 +1,7 @@
 package in.bm.netflix_auth_service.SERVICE;
 
 
+import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.mail.SimpleMailMessage;
@@ -64,4 +65,5 @@ public class EmailService {
 
         log.info("Password reset verification email sent to {}", email);
     }
+
 }

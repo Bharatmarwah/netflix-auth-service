@@ -8,6 +8,7 @@ import in.bm.netflix_auth_service.REPOSITORY.AuthUserRepository;
 import in.bm.netflix_auth_service.REPOSITORY.UserDeviceRepository;
 import in.bm.netflix_auth_service.REPOSITORY.VerificationOtpRepository;
 import in.bm.netflix_auth_service.REPOSITORY.VerificationTokenRepository;
+import in.bm.netflix_auth_service.RequestDTO.OtpRequestDTO;
 import in.bm.netflix_auth_service.RequestDTO.UserLoginRequestDTO;
 import in.bm.netflix_auth_service.RequestDTO.UserRegisterRequestDTO;
 import in.bm.netflix_auth_service.ResponseDTO.UserLoginResponseDTO;
@@ -15,6 +16,7 @@ import in.bm.netflix_auth_service.ResponseDTO.UserRefreshTokenResponse;
 import in.bm.netflix_auth_service.ResponseDTO.UserRegisterResponseDTO;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import lombok.RequiredArgsConstructor;
 import jakarta.servlet.http.Cookie;
@@ -233,42 +235,56 @@ public class AuthUserService {
     }
 
     @Transactional
-    public void sendEmailVerificationLink(String email) {
+    public void sendVerification(@NotBlank String identifier) {
+        AuthUser user;
+        if (isEmail(identifier)) {
 
-        Optional<AuthUser> optionalUser = authUserRepository.findByEmail(email);
+            user = authUserRepository
+                    .findByEmail(identifier)
+                    .orElseThrow(() -> new UserNotFound("User not found"));
 
-        if (optionalUser.isEmpty()) {
-            log.info("Email {} not found. Skipping verification email.", email);
-            return;
+            verificationTokenRepository.deleteByUserAndType(user, VerificationType.VERIFICATION);
+
+            String rawToken = UUID.randomUUID().toString();
+            String hashedToken = jwtService.getTokenHash(rawToken);
+
+            VerificationToken verificationToken = new VerificationToken();
+            verificationToken.setTokenHash(hashedToken);
+            verificationToken.setUser(user);
+            verificationToken.setCreatedAt(LocalDateTime.now());
+            verificationToken.setExpiresAt(LocalDateTime.now().plusMinutes(10));
+            verificationToken.setUsed(false);
+            verificationToken.setType(VerificationType.VERIFICATION);
+
+            verificationTokenRepository.save(verificationToken);
+
+            String verificationLink =
+                    "https://netflix/verify?token=" + rawToken;
+
+            log.info("Sending verification email to {} with link: {}", identifier, verificationLink);
+            emailService.sendVerificationEmail(user.getEmail(), verificationLink);
+        } else if (isMobile(identifier)) {
+            user = authUserRepository
+                    .findByMobileNumber(identifier)
+                    .orElseThrow(() -> new UserNotFound("User not found"));
+            verificationOtpRepository.deleteByUserAndType(user, VerificationType.VERIFICATION);
+
+            VerificationOtp otp = new VerificationOtp();
+            otp.setMobileNumber(identifier);
+            otp.setUsed(false);
+            otp.setCreatedAt(LocalDateTime.now());
+            otp.setExpiredAt(LocalDateTime.now().plusMinutes(10));
+            otp.setOtpHash(null);// development purpose
+            otp.setUser(user);
+            otp.setType(VerificationType.VERIFICATION);
+
+            verificationOtpRepository.save(otp);
+
+            log.info("Sending verification otp to {}", identifier);
+            otpService.sendOnceTimePassword(identifier);
+        } else {
+            throw new InvalidCredentialsException("Invalid email or mobile number");
         }
-        AuthUser user = optionalUser.get();
-        if (user.isEmailVerified()) {
-            log.info("Email {} already verified. Skipping verification email.", email);
-            return;
-        }
-        verificationTokenRepository.deleteByUserAndType(
-                user, VerificationType.EMAIL_VERIFICATION
-        );
-
-        String rawToken = UUID.randomUUID().toString();
-
-        String hashedToken = jwtService.getTokenHash(rawToken);
-
-        VerificationToken verificationToken = new VerificationToken();
-        verificationToken.setTokenHash(hashedToken);
-        verificationToken.setUser(user);
-        verificationToken.setCreatedAt(LocalDateTime.now());
-        verificationToken.setExpiresAt(LocalDateTime.now().plusMinutes(10));
-        verificationToken.setUsed(false);
-        verificationToken.setType(VerificationType.EMAIL_VERIFICATION);
-
-        verificationTokenRepository.save(verificationToken);
-
-        String verificationLink =
-                "https://netflix/verify?token=" + rawToken;
-
-        log.info("Sending verification email to {} with link: {}", email, verificationLink);
-        emailService.sendVerificationEmail(user.getEmail(), verificationLink);
     }
 
     @Transactional
@@ -399,5 +415,19 @@ public class AuthUserService {
             throw new InvalidCredentialsException("Invalid email or mobile number");
         }
     }
+
+    @Transactional
+    public void verifyOtp(@Valid OtpRequestDTO requestDTO) {
+        AuthUser user =  authUserRepository
+                .findByMobileNumber
+                        (requestDTO.getMobileNumber())
+                .orElseThrow(()->new UserNotFound("User not found"));
+
+        otpService.verifyOtp(requestDTO.getMobileNumber(),requestDTO.getOtp());
+
+        user.setMobileVerified(true);
+    }
+
+
 }
 
