@@ -92,6 +92,11 @@ public class AuthUserController {
     public void PasswordReset(@NotBlank @RequestBody String identifier){
         authUserService.sendPasswordResetVerification(identifier);
     }
+// test api for token verification and other things
+    @GetMapping("/test")
+    public String test(){
+        return "Working";
+    }
 
 
 
